@@ -1,6 +1,5 @@
 from transformers import PretrainedConfig
 
-# huggingface
 class MokioMindConfig(PretrainedConfig):
     model_type = "mokiomind"
 
@@ -71,3 +70,25 @@ class MokioMindConfig(PretrainedConfig):
             else None
         )
 
+import torch 
+import torch.nn as nn
+
+class RMSNorm(nn.Module):
+    def __init__(self,dim:int,eps:float=1e-5):
+        super().__init__()
+        self.dim=dim
+        self.eps=eps
+        self.weight=nn.Parameter(torch.ones(dim))
+# RMSnorm method 
+    def _norm(self,x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+    
+# forward 
+    def forward(self,x):
+        return self.weight*self._norm(x.float()).type_as(x)
+    
+def precompute_freqs_cis(dim:int,end:int(32*1024),rope_base,rope_scaling:Optional[dict]=None):
+        freqs, attn_factor = (
+        1.0 / (rope_base ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim)),
+        1.0,
+    )
