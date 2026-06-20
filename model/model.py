@@ -208,11 +208,14 @@ class Attention(nn.Module):
     ):
         bsz, seq_len, _ = x.shape
         xq, xk, xv = self.q_proj(x), self.k_proj(x), self.v_proj(x)
+
+        # 拆分多头
         xq = xq.view(bsz, seq_len, self.n_local_heads, self.head_dim)
         xk = xk.view(bsz, seq_len, self.n_local_kv_heads, self.head_dim)
         xv = xv.view(bsz, seq_len, self.n_local_kv_heads, self.head_dim)
 
         cos, sin = position_embeddings
+        # 对QK用roPE
         xq, xk = apply_rotary_pos_emb(xq, xk, cos, sin)
 
         # kv_cache实现
