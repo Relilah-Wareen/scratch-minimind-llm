@@ -4,3 +4,4 @@ __pycache__/
 .DS_Store
 CV.pdf
 note.md
+dataset/pretrain_t2t_mini.jsonl
