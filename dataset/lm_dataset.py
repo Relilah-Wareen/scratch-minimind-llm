@@ -110,18 +110,13 @@ class SFTDataset(Dataset):
 
     def create_chat_prompt(self, conversations):
         """将多轮对话渲染为模型输入字符串"""
-        messages = conversations.copy()
-        tools = (
-            conversations[0]["functions"]
-            if (
-                conversations
-                and conversations[0]["role"] == "system"
-                and conversations[0].get("functions")
-            )
-            else None
-        )
+        messages = []
+        for msg in conversations:
+            msg = dict(msg)
+            msg.pop("functions", None)  # 去掉 function calling 字段，防止 Jinja 报错
+            messages.append(msg)
         return self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False, tools=tools
+            messages, tokenize=False, add_generation_prompt=False
         )
 
     def generate_labels(self, input_ids):
