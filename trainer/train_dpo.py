@@ -38,7 +38,7 @@ def dpo_loss(chosen_logps, rejected_logps, ref_chosen_logps, ref_rejected_logps,
 def get_logps(model, input_ids, attention_mask, labels, loss_mask):
     """计算序列的对数概率"""
     outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-    logits = model.lm_head(outputs[0]) if isinstance(outputs, tuple) else model.lm_head(outputs)
+    logits = outputs.logits  # CausalLMOutputWithPast 自带 logits
     log_probs = F.log_softmax(logits, dim=-1)
     token_logps = torch.gather(log_probs[:, :-1], -1, labels[:, 1:].unsqueeze(-1)).squeeze(-1)
     masked_logps = token_logps * loss_mask[:, 1:]
