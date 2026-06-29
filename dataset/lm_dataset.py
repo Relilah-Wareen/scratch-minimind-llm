@@ -113,7 +113,8 @@ class SFTDataset(Dataset):
         messages = []
         for msg in conversations:
             msg = dict(msg)
-            msg.pop("functions", None)  # 去掉 function calling 字段，防止 Jinja 报错
+            msg.pop("functions", None)     # 去掉 function calling
+            msg.pop("tool_calls", None)    # 去掉 tool calling，防止 Jinja tojson 报错
             messages.append(msg)
         return self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=False
