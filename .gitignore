@@ -5,6 +5,7 @@ __pycache__/
 CV.pdf
 CV/
 note.md
+dataset/test/
 dataset/pretrain_t2t_mini.jsonl
 dataset/sft_t2t_mini.jsonl
 dataset/dpo.jsonl
