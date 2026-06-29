@@ -3,5 +3,11 @@ __pycache__/
 *.pyc
 .DS_Store
 CV.pdf
+CV/
 note.md
 dataset/pretrain_t2t_mini.jsonl
+dataset/sft_t2t_mini.jsonl
+dataset/dpo.jsonl
+dataset/rlaif.jsonl
+out/
+checkpoints/
