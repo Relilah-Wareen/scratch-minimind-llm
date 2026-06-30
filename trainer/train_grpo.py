@@ -393,13 +393,36 @@ if __name__ == "__main__":
 
     reward_path = os.path.expanduser(args.reward_model_path)
     os.environ["HF_HUB_OFFLINE"] = "1"
+
+    # 兼容 transformers 4.x/5.x：InternLM2 依赖旧版 DynamicCache API
+    from transformers.cache_utils import DynamicCache
+    if not hasattr(DynamicCache, "from_legacy_cache"):
+        @staticmethod
+        def _from_legacy_cache(legacy_cache):
+            if legacy_cache is None:
+                return DynamicCache()
+            cache = DynamicCache()
+            for layer_k, layer_v in legacy_cache:
+                cache.update(layer_k, layer_v, 0)
+            return cache
+        DynamicCache.from_legacy_cache = _from_legacy_cache
+    if not hasattr(DynamicCache, "to_legacy_cache"):
+        def _to_legacy_cache(self):
+            result = []
+            for layer in self.layers:
+                result.append((layer[0], layer[1]) if isinstance(layer, tuple) else (layer.key_cache, layer.value_cache))
+            return result
+        DynamicCache.to_legacy_cache = _to_legacy_cache
+
+    # 修复 tokenizer/model vocab 不匹配：tokenizer 比 model 多几个 special token
     reward_model = AutoModel.from_pretrained(
         reward_path, torch_dtype=torch.float16, trust_remote_code=True
     )
-    reward_model = reward_model.to(args.device).eval().requires_grad_(False)
     reward_tokenizer = AutoTokenizer.from_pretrained(
         reward_path, trust_remote_code=True
     )
+    reward_model.resize_token_embeddings(len(reward_tokenizer))
+    reward_model = reward_model.to(args.device).eval().requires_grad_(False)
 
     train_ds = RLAIFDataset(
         args.data_path, tokenizer, max_length=lm_config.max_position_embeddings
