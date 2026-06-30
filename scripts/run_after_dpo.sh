@@ -7,7 +7,7 @@ python train_grpo.py \
     --save_weight grpo \
     --epochs 1 --batch_size 2 --learning_rate 1e-6 \
     --data_path ../dataset/rlaif.jsonl \
-    --num_generations 4 --beta 0.04 \
+    --num_generations 4 --beta 0.04 --reasoning 0 \
     --reward_model_path ../../internlm2-1_8b-reward
 echo "GRPO 完成"
 
