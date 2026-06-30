@@ -402,15 +402,27 @@ if __name__ == "__main__":
             if legacy_cache is None:
                 return DynamicCache()
             cache = DynamicCache()
-            for layer_k, layer_v in legacy_cache:
-                cache.update(layer_k, layer_v, 0)
+            for i, tup in enumerate(legacy_cache):
+                try:
+                    cache.update(tup[0], tup[1], i)
+                except Exception:
+                    cache.key_cache.append(tup[0])
+                    cache.value_cache.append(tup[1])
             return cache
         DynamicCache.from_legacy_cache = _from_legacy_cache
     if not hasattr(DynamicCache, "to_legacy_cache"):
         def _to_legacy_cache(self):
             result = []
             for layer in self.layers:
-                result.append((layer[0], layer[1]) if isinstance(layer, tuple) else (layer.key_cache, layer.value_cache))
+                if isinstance(layer, tuple):
+                    result.append(layer)
+                elif hasattr(layer, "key_cache"):
+                    result.append((layer.key_cache, layer.value_cache))
+                elif hasattr(layer, "self_attn_cache"):
+                    # AutoDL 4.x transformers: DynamicLayer 用 self_attn_cache
+                    result.append(layer.self_attn_cache)
+                else:
+                    result.append((layer[0], layer[1]))
             return result
         DynamicCache.to_legacy_cache = _to_legacy_cache
 
