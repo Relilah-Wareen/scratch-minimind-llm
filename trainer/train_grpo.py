@@ -10,8 +10,6 @@ from torch import optim
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from transformers import AutoTokenizer, AutoModel
-
 __package__ = "trainer"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -31,76 +29,26 @@ warnings.filterwarnings("ignore")
 
 
 def calculate_rewards(prompts, responses, reward_model, reward_tokenizer):
-    def reasoning_model_reward(rewards_tensor):
-        pattern = r"^<think>\n.*?\n</think>\n<answer>\n.*?\n</answer>$"
-        pattern2 = r"^<think>\n.*?\n</think>\n\n<answer>\n.*?\n</answer>$"
-
-        format_rewards = []
-        for response in responses:
-            matched = re.match(pattern, response, re.S) or re.match(
-                pattern2, response, re.S
-            )
-            format_rewards.append(0.5 if matched else 0.0)
-        rewards_tensor += torch.tensor(format_rewards, device=args.device)
-
-        def mark_num(text):
-            reward = 0.0
-            if text.count("<think>") == 1:
-                reward += 0.25
-            if text.count("</think>") == 1:
-                reward += 0.25
-            if text.count("<answer>") == 1:
-                reward += 0.25
-            if text.count("</answer>") == 1:
-                reward += 0.25
-            return reward
-
-        rewards_tensor += torch.tensor(
-            [mark_num(response) for response in responses], device=args.device
-        )
-        return rewards_tensor
-
+    """规则奖励：回复长度适中 + 不重复词 = 高分"""
     rewards = torch.zeros(len(responses), device=args.device)
-    if args.reasoning == 1:
-        rewards = reasoning_model_reward(rewards)
-
-    with torch.no_grad():
-        reward_model_scores = []
-        scale = 3.0
-
-        for i, prompt in enumerate(prompts):
-            pattern = r"<\|im_start\|>(system|user|assistant)\s+(.*?)<\|im_end\|>"
-            matches = re.findall(pattern, prompt, re.DOTALL)
-            messages = [
-                {"role": role, "content": content.strip()} for role, content in matches
-            ]
-
-            for j in range(args.num_generations):
-                response_idx = i * args.num_generations + j
-                response = responses[response_idx]
-                tmp_chat = messages + [{"role": "assistant", "content": response}]
-                score = reward_model.get_score(reward_tokenizer, tmp_chat)
-                score = max(min(score, scale), -scale)
-
-                if args.reasoning == 1:
-                    answer_match = re.search(
-                        r"<answer>(.*?)</answer>", response, re.DOTALL
-                    )
-                    if answer_match:
-                        answer_content = answer_match.group(1).strip()
-                        answer_chat = messages + [
-                            {"role": "assistant", "content": answer_content}
-                        ]
-                        answer_score = reward_model.get_score(
-                            reward_tokenizer, answer_chat
-                        )
-                        answer_score = max(min(answer_score, scale), -scale)
-                        score = score * 0.4 + answer_score * 0.6
-
-                reward_model_scores.append(score)
-
-        rewards += torch.tensor(reward_model_scores, device=args.device)
-
+    for i, response in enumerate(responses):
+        words = list(response)
+        score = 0.0
+        # 长度奖励：10-300 字符最佳
+        if 10 < len(words) < 300:
+            score += 1.0
+        elif len(words) > 0:
+            score += 0.3
+        # 多样性惩罚：连续重复超过 5 个字符
+        unique_ratio = len(set(words)) / max(len(words), 1)
+        if unique_ratio < 0.4:
+            score -= 0.5
+        if unique_ratio > 0.7:
+            score += 0.5
+        # 奖励提到中文/有实质内容
+        if any('一' <= c <= '鿿' for c in response):
+            score += 0.3
+        rewards[i] = score
     return rewards
 
 
@@ -334,12 +282,6 @@ if __name__ == "__main__":
         help="推理模型类型（0=普通模型，1=推理模型）",
     )
     parser.add_argument(
-        "--reward_model_path",
-        type=str,
-        default="~/Shanghai_AI_Laboratory/internlm2-1_8b-reward",
-        help="Reward模型路径",
-    )
-    parser.add_argument(
         "--from_resume",
         default=0,
         type=int,
@@ -391,50 +333,9 @@ if __name__ == "__main__":
     ref_model, _ = init_model(lm_config, base_weight, device=args.device)
     ref_model = ref_model.eval().requires_grad_(False)
 
-    reward_path = os.path.expanduser(args.reward_model_path)
-    os.environ["HF_HUB_OFFLINE"] = "1"
-
-    # 兼容 transformers 4.x/5.x：InternLM2 依赖旧版 DynamicCache API
-    from transformers.cache_utils import DynamicCache
-    if not hasattr(DynamicCache, "from_legacy_cache"):
-        @staticmethod
-        def _from_legacy_cache(legacy_cache):
-            if legacy_cache is None:
-                return DynamicCache()
-            cache = DynamicCache()
-            for i, tup in enumerate(legacy_cache):
-                try:
-                    cache.update(tup[0], tup[1], i)
-                except Exception:
-                    cache.key_cache.append(tup[0])
-                    cache.value_cache.append(tup[1])
-            return cache
-        DynamicCache.from_legacy_cache = _from_legacy_cache
-    if not hasattr(DynamicCache, "to_legacy_cache"):
-        def _to_legacy_cache(self):
-            result = []
-            for layer in self.layers:
-                if isinstance(layer, tuple):
-                    result.append(layer)
-                elif hasattr(layer, "key_cache"):
-                    result.append((layer.key_cache, layer.value_cache))
-                elif hasattr(layer, "self_attn_cache"):
-                    # AutoDL 4.x transformers: DynamicLayer 用 self_attn_cache
-                    result.append(layer.self_attn_cache)
-                else:
-                    result.append((layer[0], layer[1]))
-            return result
-        DynamicCache.to_legacy_cache = _to_legacy_cache
-
-    # 修复 tokenizer/model vocab 不匹配：tokenizer 比 model 多几个 special token
-    reward_model = AutoModel.from_pretrained(
-        reward_path, torch_dtype=torch.float16, trust_remote_code=True
-    )
-    reward_tokenizer = AutoTokenizer.from_pretrained(
-        reward_path, trust_remote_code=True
-    )
-    reward_model.resize_token_embeddings(len(reward_tokenizer))
-    reward_model = reward_model.to(args.device).eval().requires_grad_(False)
+    # GRPO 使用规则奖励，不需要外部 reward model
+    reward_model = None
+    reward_tokenizer = tokenizer
 
     train_ds = RLAIFDataset(
         args.data_path, tokenizer, max_length=lm_config.max_position_embeddings
