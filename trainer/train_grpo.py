@@ -336,7 +336,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reward_model_path",
         type=str,
-        default="../../Shanghai_AI_Laboratory/internlm2-1_8b-reward",
+        default="../../../Shanghai_AI_Laboratory/internlm2-1_8b-reward",
         help="Reward模型路径",
     )
     parser.add_argument(
