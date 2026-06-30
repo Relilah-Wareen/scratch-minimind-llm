@@ -391,12 +391,13 @@ if __name__ == "__main__":
     ref_model, _ = init_model(lm_config, base_weight, device=args.device)
     ref_model = ref_model.eval().requires_grad_(False)
 
+    reward_path = os.path.abspath(args.reward_model_path)
     reward_model = AutoModel.from_pretrained(
-        args.reward_model_path, torch_dtype=torch.float16, trust_remote_code=True, local_files_only=True
+        reward_path, torch_dtype=torch.float16, trust_remote_code=True, local_files_only=True
     )
     reward_model = reward_model.to(args.device).eval().requires_grad_(False)
     reward_tokenizer = AutoTokenizer.from_pretrained(
-        args.reward_model_path, trust_remote_code=True, local_files_only=True
+        reward_path, trust_remote_code=True, local_files_only=True
     )
 
     train_ds = RLAIFDataset(
