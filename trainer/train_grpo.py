@@ -336,7 +336,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reward_model_path",
         type=str,
-        default="../../../Shanghai_AI_Laboratory/internlm2-1_8b-reward",
+        default="~/Shanghai_AI_Laboratory/internlm2-1_8b-reward",
         help="Reward模型路径",
     )
     parser.add_argument(
@@ -391,7 +391,7 @@ if __name__ == "__main__":
     ref_model, _ = init_model(lm_config, base_weight, device=args.device)
     ref_model = ref_model.eval().requires_grad_(False)
 
-    reward_path = os.path.abspath(args.reward_model_path)
+    reward_path = os.path.expanduser(args.reward_model_path)
     os.environ["HF_HUB_OFFLINE"] = "1"
     reward_model = AutoModel.from_pretrained(
         reward_path, torch_dtype=torch.float16, trust_remote_code=True
