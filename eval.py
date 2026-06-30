@@ -20,7 +20,7 @@ def init_model(args):
         )
     )
     moe_suffix = "_moe" if args.use_moe else ""
-    ckp = f"../out/{args.weight}_{args.hidden_size}{moe_suffix}.pth"
+    ckp = f"out/{args.weight}_{args.hidden_size}{moe_suffix}.pth"
     model.load_state_dict(torch.load(ckp, map_location=args.device), strict=True)
     print(f"模型参数: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     return model.eval().to(args.device), tokenizer
@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--temperature", default=0.85, type=float)
     parser.add_argument("--top_p", default=0.85, type=float)
     parser.add_argument("--historys", default=0, type=int, help="携带历史轮数")
+    parser.add_argument("--mode", default="auto", type=str, choices=["auto", "manual"], help="auto=自动测试, manual=手动输入")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu", type=str)
     args = parser.parse_args()
 
@@ -54,7 +55,9 @@ def main():
 
     conversation = []
     model, tokenizer = init_model(args)
-    input_mode = int(input("[0] 自动测试\n[1] 手动输入\n"))
+    input_mode = 0 if args.mode == "auto" else 1
+    if input_mode == 1:
+        print("手动输入模式，输入 quit 退出")
     streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
     prompt_iter = prompts if input_mode == 0 else iter(lambda: input("👶: "), "")

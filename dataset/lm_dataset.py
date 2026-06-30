@@ -239,3 +239,40 @@ class DPODataset(Dataset):
             "attention_mask_chosen": (torch.tensor(c_ids[:-1]) != self.padding).long(),
             "attention_mask_rejected": (torch.tensor(r_ids[:-1]) != self.padding).long(),
         }
+
+
+# ── 4. RLAIFDataset —— 强化学习数据集（用于 PPO/GRPO）──
+# 目标：RL 训练使用，返回原始 prompt 字符串，由 RL trainer 在线 tokenize
+# 格式：{"conversations": [{"content": "..."}, {"content": "..."}]}
+
+class RLAIFDataset(Dataset):
+    def __init__(self, jsonl_path, tokenizer, max_length=1024):
+        super().__init__()
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.samples = load_dataset("json", data_files=jsonl_path, split="train")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def create_chat_prompt(self, conversations):
+        """分离 prompt 和 answer，供 RL trainer 在线 rollout"""
+        messages = []
+        answer = ""
+        for i, turn in enumerate(conversations):
+            role = "user" if i % 2 == 0 else "assistant"
+            msg = dict(turn)
+            msg.pop("functions", None)
+            msg.pop("tool_calls", None)
+            messages.append({"role": role, "content": msg.get("content", turn.get("content", ""))})
+            answer = msg.get("content", turn.get("content", ""))
+        prompt = self.tokenizer.apply_chat_template(
+            messages[:-1], tokenize=False, add_generation_prompt=True,
+        )
+        prompt = post_processing_chat(prompt)
+        return prompt, answer
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+        prompt, answer = self.create_chat_prompt(sample["conversations"])
+        return {"prompt": prompt, "answer": answer}
